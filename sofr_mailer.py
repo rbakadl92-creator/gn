@@ -62,19 +62,17 @@ if __name__ == "__main__":
 
 변규남 드림"""
 
-    OUTLOOK_USER = os.environ["GMAIL_USER"]
-    OUTLOOK_PASS = os.environ["GMAIL_PASS"]
-    TO_EMAIL     = os.environ["TO_EMAIL"]
+    GMAIL_USER = os.environ["GMAIL_USER"]
+    GMAIL_PASS = os.environ["GMAIL_PASS"]
+    TO_EMAIL   = os.environ["TO_EMAIL"]
 
     msg = MIMEMultipart()
-    msg["From"]    = OUTLOOK_USER
+    msg["From"]    = GMAIL_USER
     msg["To"]      = TO_EMAIL
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    with smtplib.SMTP("smtp-mail.outlook.com", 587) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(OUTLOOK_USER, OUTLOOK_PASS)
-        server.sendmail(OUTLOOK_USER, TO_EMAIL, msg.as_string())
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(GMAIL_USER, GMAIL_PASS)
+        server.sendmail(GMAIL_USER, TO_EMAIL, msg.as_string())
     print("✅ 발송 완료")
