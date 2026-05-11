@@ -2,9 +2,10 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import urllib.request
+import urllib.parse
+import json
+import base64
 
 def get_sofr_rates():
     url = "https://www.global-rates.com/en/interest-rates/sofr/"
@@ -62,17 +63,23 @@ if __name__ == "__main__":
 
 변규남 드림"""
 
-    GMAIL_USER = os.environ["GMAIL_USER"]
-    GMAIL_PASS = os.environ["GMAIL_PASS"]
-    TO_EMAIL   = os.environ["TO_EMAIL"]
+    RESEND_API_KEY = os.environ["RESEND_API_KEY"]
+    TO_EMAIL       = os.environ["TO_EMAIL"]
 
-    msg = MIMEMultipart()
-    msg["From"]    = GMAIL_USER
-    msg["To"]      = TO_EMAIL
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+    data = json.dumps({
+        "from": "onboarding@resend.dev",
+        "to": [TO_EMAIL],
+        "subject": subject,
+        "text": body
+    }).encode("utf-8")
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(GMAIL_USER, GMAIL_PASS)
-        server.sendmail(GMAIL_USER, TO_EMAIL, msg.as_string())
-    print("✅ 발송 완료")
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=data,
+        method="POST"
+    )
+    req.add_header("Authorization", f"Bearer {RESEND_API_KEY}")
+    req.add_header("Content-Type", "application/json")
+
+    with urllib.request.urlopen(req) as resp:
+        print("✅ 발송 완료:", resp.status)
