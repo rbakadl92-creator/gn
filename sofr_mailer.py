@@ -1,17 +1,17 @@
 import requests
 from bs4 import BeautifulSoup
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 import os
+import urllib.request
+import urllib.parse
+import json
+import base64
 
 def get_sofr_rates():
     url = "https://www.global-rates.com/en/interest-rates/sofr/"
     headers = {"User-Agent": "Mozilla/5.0"}
     res = requests.get(url, headers=headers, timeout=10)
     soup = BeautifulSoup(res.text, "html.parser")
-    
     rows = []
     for table in soup.find_all("table"):
         for tr in table.find_all("tr"):
@@ -24,11 +24,8 @@ def get_sofr_rates():
                     rows.append((date_txt, float(rate_txt)))
                 except:
                     pass
-    
     rows.sort(key=lambda x: datetime.strptime(x[0], "%m-%d-%Y"), reverse=True)
-    today_date, today_rate = rows[0]
-    prev_date, prev_rate  = rows[1]
-    return today_date, today_rate, prev_date, prev_rate
+    return rows[0][0], rows[0][1], rows[1][0], rows[1][1]
 
 def add_biz_days(date_str, n):
     d = datetime.strptime(date_str, "%m-%d-%Y")
@@ -39,17 +36,41 @@ def add_biz_days(date_str, n):
             added += 1
     return d.strftime("%Y-%m-%d")
 
-def fmt_kr(date_str):
-    d = datetime.strptime(date_str, "%m-%d-%Y")
-    return f"{d.year}년 {d.month}월 {d.day}일"
+def send_via_mailgun(subject, body):
+    api_key = os.environ["MAILGUN_API_KEY"]
+    domain  = os.environ["MAILGUN_DOMAIN"]
+    to      = os.environ["TO_EMAIL"]
+    from_addr = f"SOFR Mailer <mailgun@{domain}>"
 
-def send_email(today_date, today_rate, prev_date, prev_rate):
+    data = urllib.parse.urlencode({
+        "from": from_addr,
+        "to": to,
+        "subject": subject,
+        "text": body
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        f"https://api.mailgun.net/v3/{domain}/messages",
+        data=data,
+        method="POST"
+    )
+    credentials = base64.b64encode(f"api:{api_key}".encode()).decode()
+    req.add_header("Authorization", f"Basic {credentials}")
+
+    with urllib.request.urlopen(req) as resp:
+        print("✅ 발송 완료:", resp.status)
+
+if __name__ == "__main__":
+    today_date, today_rate, prev_date, prev_rate = get_sofr_rates()
     RESERVE = 0.10
     SPREAD  = 4.50
     total      = round(today_rate + RESERVE + SPREAD, 2)
     prev_total = round(prev_rate  + RESERVE + SPREAD, 2)
     apply_date = add_biz_days(today_date, 2)
-    
+
+    print(f"오늘 SOFR: {today_rate}% ({today_date})")
+    print(f"전일 SOFR: {prev_rate}% ({prev_date})")
+
     subject = f"[{apply_date}] 28042 DB미국광통신망선순위대출펀드 변동금리 업데이트 요청"
     body = f"""안녕하십니까 대체투자2팀 변규남 입니다
 
@@ -66,23 +87,4 @@ def send_email(today_date, today_rate, prev_date, prev_rate):
 
 변규남 드림"""
 
-    GMAIL_USER = os.environ["GMAIL_USER"]
-    GMAIL_PASS = os.environ["GMAIL_PASS"]
-    TO_EMAIL   = os.environ["TO_EMAIL"]
-
-    msg = MIMEMultipart()
-    msg["From"]    = GMAIL_USER
-    msg["To"]      = TO_EMAIL
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(GMAIL_USER, GMAIL_PASS)
-        server.sendmail(GMAIL_USER, TO_EMAIL, msg.as_string())
-    print(f"✅ 발송 완료: {subject}")
-
-if __name__ == "__main__":
-    today_date, today_rate, prev_date, prev_rate = get_sofr_rates()
-    print(f"오늘 SOFR: {today_rate}% ({today_date})")
-    print(f"전일 SOFR: {prev_rate}% ({prev_date})")
-    send_email(today_date, today_rate, prev_date, prev_rate)
+    send_via_mailgun(subject, body)
