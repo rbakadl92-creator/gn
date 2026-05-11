@@ -2,10 +2,9 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 import os
-import urllib.request
-import urllib.parse
-import json
-import base64
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 def get_sofr_rates():
     url = "https://www.global-rates.com/en/interest-rates/sofr/"
@@ -36,30 +35,6 @@ def add_biz_days(date_str, n):
             added += 1
     return d.strftime("%Y-%m-%d")
 
-def send_via_mailgun(subject, body):
-    api_key = os.environ["MAILGUN_API_KEY"]
-    domain  = os.environ["MAILGUN_DOMAIN"]
-    to      = os.environ["TO_EMAIL"]
-    from_addr = f"SOFR Mailer <mailgun@{domain}>"
-
-    data = urllib.parse.urlencode({
-        "from": from_addr,
-        "to": to,
-        "subject": subject,
-        "text": body
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        f"https://api.mailgun.net/v3/{domain}/messages",
-        data=data,
-        method="POST"
-    )
-    credentials = base64.b64encode(f"api:{api_key}".encode()).decode()
-    req.add_header("Authorization", f"Basic {credentials}")
-
-    with urllib.request.urlopen(req) as resp:
-        print("✅ 발송 완료:", resp.status)
-
 if __name__ == "__main__":
     today_date, today_rate, prev_date, prev_rate = get_sofr_rates()
     RESERVE = 0.10
@@ -87,4 +62,19 @@ if __name__ == "__main__":
 
 변규남 드림"""
 
-    send_via_mailgun(subject, body)
+    OUTLOOK_USER = os.environ["GMAIL_USER"]
+    OUTLOOK_PASS = os.environ["GMAIL_PASS"]
+    TO_EMAIL     = os.environ["TO_EMAIL"]
+
+    msg = MIMEMultipart()
+    msg["From"]    = OUTLOOK_USER
+    msg["To"]      = TO_EMAIL
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    with smtplib.SMTP("smtp-mail.outlook.com", 587) as server:
+        server.ehlo()
+        server.starttls()
+        server.login(OUTLOOK_USER, OUTLOOK_PASS)
+        server.sendmail(OUTLOOK_USER, TO_EMAIL, msg.as_string())
+    print("✅ 발송 완료")
